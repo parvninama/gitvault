@@ -1,0 +1,39 @@
+{
+  "name": "gitvault-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Research POC: GitHub-backed virtual storage with an experimental .parw container",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "experiment": "node --disable-warning=ExperimentalWarning src/cli/experiment.ts",
+    "parw:encode": "node --disable-warning=ExperimentalWarning src/cli/parw.ts encode",
+    "parw:decode": "node --disable-warning=ExperimentalWarning src/cli/parw.ts decode",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server/index.ts",
+    "client:dev": "vite",
+    "client:build": "vite build",
+    "client:build:esbuild": "node scripts/build-client.mjs",
+    "start": "npm run client:build && node --disable-warning=ExperimentalWarning src/server/index.ts",
+    "e2e": "node scripts/e2e-browser.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "@types/express": "^4.17.21",
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.24.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "playwright": "^1.48.0"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
