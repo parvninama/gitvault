@@ -10,7 +10,7 @@ export function Repositories({ settings }: { settings: Settings }) {
   return (
     <section>
       <h2>Repositories</h2>
-      <p className="muted">{settings.backend === 'local' ? 'Simulated repositories on local disk.' : 'Real GitHub repositories (experimental).'} The Files page hides these boundaries on purpose.</p>
+      <p className="muted">{settings.backend === 'local' ? 'Simulated repositories on local disk.' : 'Real GitHub repositories.'} The Files page hides these boundaries on purpose.</p>
       <Async state={state}>{(repos) => repos.length === 0 ? <p>No repositories yet.</p> : (
         <table>
           <thead><tr><th>Repository</th><th>Provider</th><th>Current tree</th><th>Historical <Tag kind="estimate">estimate</Tag></th><th>Target size</th><th>Files</th><th>Status</th></tr></thead>

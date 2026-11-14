@@ -1,9 +1,9 @@
 {
-  "name": "gitvault-poc",
+  "name": "gitvault",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Research POC: GitHub-backed virtual storage with an experimental .parw container",
+  "description": "Git-backed versioned file storage with content-addressed objects and integrity verification",
   "engines": {
     "node": ">=22.18"
   },

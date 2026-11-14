@@ -31,13 +31,13 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>GitVault <span className="muted">experimental Git-backed storage</span></h1>
+        <h1>GitVault <span className="muted">Git-backed storage</span></h1>
         <nav>{PAGES.map((p) => <a key={p} href={`#/${p}`} className={p === page ? 'active' : ''}>{TITLES[p]}</a>)}</nav>
       </header>
       <Async state={settings}>{(s) => (
         <>
           {s.backend === 'github'
-            ? <div className="banner banner-gh">Experimental GitHub backend. Not production-ready; not a free unlimited storage service.</div>
+            ? <div className="banner banner-gh">Connected to GitHub. Repository storage is subject to GitHub's limits and policies.</div>
             : <div className="banner">Local mode: repositories are simulated on disk. No GitHub account needed.</div>}
           <main>
             {page === 'dashboard' && <Dashboard backend={s.backend} />}

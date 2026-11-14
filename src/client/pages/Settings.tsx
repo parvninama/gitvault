@@ -9,7 +9,7 @@ export function SettingsPage({ settings }: { settings: S }) {
       <h2>Settings</h2>
       <p className="muted">Read-only. Configure through environment variables (see .env.example) and restart the server.</p>
       <dl className="kv">
-        <dt>Storage backend</dt><dd>{settings.backend === 'local' ? 'Local (simulated repositories)' : <>GitHub <Tag kind="warn">Experimental GitHub backend</Tag></>} <code>STORAGE_BACKEND</code></dd>
+        <dt>Storage backend</dt><dd>{settings.backend === 'local' ? 'Local (simulated repositories)' : <>GitHub <Tag kind="ok">Connected backend</Tag></>} <code>STORAGE_BACKEND</code></dd>
         <dt>Repository target size</dt><dd>{fmtBytes(settings.targetRepositorySize)} <code>TARGET_REPOSITORY_SIZE</code></dd>
         <dt>Maximum repositories</dt><dd>{settings.maxRepositories} <code>MAX_REPOSITORIES</code></dd>
         <dt>Maximum encoded file size</dt><dd>{fmtBytes(settings.maxFileSize)} <code>MAX_GITHUB_FILE_SIZE</code> (larger files are refused; chunking is not integrated)</dd>
