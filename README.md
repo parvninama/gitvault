@@ -197,4 +197,4 @@ Issues and pull requests are welcome. Please open an issue first for larger chan
 
 ## License
 
-See [LICENSE](LICENSE). <!-- Name it here, e.g. "MIT. See LICENSE." -->
+See [LICENSE](LICENSE). 
