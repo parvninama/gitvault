@@ -4,7 +4,7 @@
 
 GitVault is a file storage system that uses GitHub repositories as its storage backend.
 
-When a user uploads a file, GitVault packages it into a .parw file, stores it through a storage provider (GitHub for now), and maintains the associated metadata in SQLite.
+When a user uploads a file, GitVault packages it into a .parw file, stores it through the configured storage provider (Local or GitHub), and maintains the associated metadata in SQLite.
 
 Archived files are represented by pointers in the current repository tree, while their original data remains retrievable through Git history.
 

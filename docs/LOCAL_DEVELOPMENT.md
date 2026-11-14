@@ -598,6 +598,6 @@ Use this checklist when testing a new local installation.
 6. Chunked upload primitives exist, but chunked uploads are not integrated into the application workflow.
 7. The local storage experiment uses an isolated simulation and does not modify the user's actual storage volume.
 8. Local Mode verifies application logic and integrity checks, but does not prove how GitHub's actual server-side storage behaves.
-9. GitHub backend testing against the real GitHub API is a separate experiment.
+9. The GitHub backend has been verified against the real GitHub API, including authentication, repository creation, upload, download, archive, restore, and metadata persistence after reconnection.
 
-**GitVault is an experimental research prototype. It should not be treated as an unlimited storage service or a production backup solution.**z
+**GitVault is a proof-of-concept implementation of Git-backed storage. It is not intended to serve as an unlimited storage service or production backup solution.**

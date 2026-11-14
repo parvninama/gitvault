@@ -1,145 +1,200 @@
-# GitVault POC: an experiment in Git-backed storage
+<div align="center">
 
-**This is an experimental research prototype.** It asks one question: *is a Git-backed virtual storage system technically viable?*
-It does **not** claim unlimited or free GitHub storage, and it is not a production backup system.
+# GitVault
 
-> **Archiving removes a file from the current tree but does not necessarily remove the historical Git object.**
-> Replacing a file with a pointer shrinks the *current tree* only. The original blob stays in Git history,
-> so repository size does not drop. Measuring exactly that is the point of the Storage Experiment page.
+**Versioned, content-addressed file storage backed by Git.**
 
-## What it does
-Upload files, compress/package them into a custom `.parw` container (zstd + SHA-256), store them in one or more Git repositories
-presented as a single virtual filesystem, "archive" a file (replace it with a tiny pointer, keeping the original reachable in history),
-and "restore" it with every checksum verified.
+![Node](https://img.shields.io/badge/node-%3E%3D22.18-8B0000)
+![TypeScript](https://img.shields.io/badge/TypeScript-8B0000)
+![Status](https://img.shields.io/badge/status-proof%20of%20concept-8B0000)
+![License](https://img.shields.io/badge/license-see%20LICENSE-8B0000)
 
-## Status: what has and has not been verified
-| Area | State |
-|---|---|
-| PARW codec, pointers, chunking primitives, multi-repo manager, StorageService | Unit/integration tested |
-| Local mode, whole workflow through the **real server and a real Chromium browser** | Verified (`npm run e2e`) |
-| React UI (7 pages) | Verified in the browser E2E, built with esbuild |
-| Express host (`src/server/api/app.ts`) | **Written, never run.** Express and Vite could not be installed where this was built. All behaviour lives in a framework-neutral route table (`routes.ts`) that *is* tested via a `node:http` host; Express is a ~20-line adapter. |
-| Vite (`vite.config.ts`, `npm run client:dev/build`) | **Not run** (same reason). The bundle used for testing was built with esbuild (`npm run client:build:esbuild`). |
-| `GitHubStorageProvider` | Tested against an in-memory **fake** GitHub only. **Never run against the real API.** |
-| Type-checking (`npm run typecheck`) | **Not run** (`@types/*` unavailable). Code runs via Node's type stripping. |
-| Chunked upload | Primitives tested; **not integrated** (deliberately deferred until the GitHub experiment says it is worthwhile). |
+</div>
 
-## Architecture
-```
- Browser (React)                    src/client/pages, components      <- UI only. No storage logic, no GitHub.
-    |  typed functions                src/client/api/client.ts        <- the ONLY place that calls fetch()
-    v
- HTTP host: Express (app.ts) or node:http (httpServer.ts)             <- thin: read body, write response
-    |
-    v
- Route table + dispatcher           src/server/api/routes.ts          <- CSRF check, auth gate, error mapping
-    |
-    v
- StorageService                     src/server/storage/StorageService.ts
-    |   encode PARW, verify, SQLite bookkeeping, one logical volume
-    +--> MetadataStore (SQLite)     src/server/database
-    +--> RepositoryManager          src/server/repository             <- picks a repo; capacity judged by HISTORICAL size
-              |
-              v
-          StorageProvider interface src/server/storage/types.ts
-              |
-              +--> LocalStorageProvider   (git-like simulation on disk; default)
-              +--> GitHubStorageProvider  (REST/Git Data API; EXPERIMENTAL, isolated in src/server/github)
-```
-Archive/restore/upload logic is written once in `VersionedStorageProvider` over a tiny `VersionedBackend`
-(`commit`, `getFile(path, ref)`, `listTree`, `stats`), so the local simulation and GitHub exercise the same workflow code.
+GitVault explores how Git repositories can act as a storage backend behind a single virtual filesystem. Files are packaged into a custom `.parw` container, verified with SHA-256, and spread across one or more repositories. You can upload, download, archive, and restore files while keeping their history.
 
-## Local setup (no GitHub account needed)
-Requires **Node >= 22.18** (built-in zstd, `node:sqlite`, TypeScript type stripping).
-```
+> **Proof of concept.** GitVault is not an unlimited storage service or a production backup solution. GitHub's limits, policies, and API constraints still apply.
+
+## Why GitVault?
+
+Git already gives you content addressing, history, and integrity checks. GitVault asks what a file store looks like if you build directly on those properties instead of bolting versioning onto a blob store.
+
+| | Git LFS | S3 | IPFS | GitVault |
+|---|---|---|---|---|
+| Built on Git history | Pointer files | No | No | Yes |
+| Integrity checks | Yes | Optional | Yes | SHA-256 on container and original |
+| Multi-repo virtual filesystem | No | N/A | N/A | Yes |
+| Production-ready | Yes | Yes | Yes | **No** |
+
+## Features
+
+- **Virtual filesystem** across multiple repositories
+- **`.parw` container** with Zstandard compression when it helps
+- **Two-level integrity checks**: container checksum and original-file checksum
+- **Archive and restore** using lightweight pointer files
+- **Fill-first allocation** across repositories, based on historical size estimates
+- **GitHub OAuth** with real private repositories as backends
+- **Local mode** for development without a GitHub account
+- **Storage experiment** comparing current tree size against retained history
+
+## Quick start
+
+Requires Node.js 22.18+ (for `node:sqlite`, Zstandard, and TypeScript type stripping), npm, and Git.
+
+```bash
+git clone https://github.com/parvninama/gitvault.git
+cd gitvault
 npm install
-npm run client:build        # Vite build -> dist/client   (fallback without Vite: npm run client:build:esbuild)
-npm run dev                 # http://127.0.0.1:3001  (serves the UI and the API)
+cp .env.example .env
+npm run dev
 ```
-UI development with hot reload: `npm run dev` in one terminal, `npm run client:dev` in another (http://localhost:5173, proxies /api).
-If `express` is not installed the server logs that it fell back to the `node:http` host; routes are identical.
 
-Tests: `npm test` (server + client API + HTTP workflow). Browser E2E: `npm run e2e` (needs Playwright + Chromium and a client build).
-CLI: `npm run experiment`, `npm run parw:encode -- file`, `npm run parw:decode -- file.parw`.
+Open <http://127.0.0.1:3001>. Local mode is the default and needs no GitHub account.
 
-## Environment variables (`.env.example`)
-| Variable | Default | Meaning |
-|---|---|---|
-| `STORAGE_BACKEND` | `local` | `local` or `github` (experimental) |
-| `DATABASE_PATH` | `./data/gitvault.sqlite` | SQLite file; `local-repos/`, `restored/`, `experiments/` live beside it |
-| `TARGET_REPOSITORY_SIZE` | 1 GiB | per-repository target, compared against *historical* size |
-| `MAX_REPOSITORIES` | 3 | hard cap; the app never creates unlimited repos |
-| `MAX_GITHUB_FILE_SIZE` | 90 MiB | encoded files above this are refused (not uploaded); do not rely on 100 MB |
-| `GITHUB_CLIENT_ID/SECRET`, `GITHUB_CALLBACK_URL` | empty | OAuth app (github mode only) |
-| `PORT`, `CLIENT_ORIGIN` | 3001, `http://localhost:5173` | server port; origin allowed for state-changing requests in dev |
+**Try it:**
 
-## Local mode
-Repositories are directories with a git-like commit log and a content-addressed object store; old objects are never deleted,
-mirroring Git's behaviour. In local mode the Storage Experiment runs in an isolated throwaway simulation, never touching your files.
-Restore has an optional "slow motion" switch (local only) so the live step display is observable.
+1. Upload a file from the UI.
+2. Archive it. The active `.parw` is replaced by a `.parw.pointer`.
+3. Restore it from Git history and confirm the checksum passes.
 
-## GitHub mode (experimental)
-`STORAGE_BACKEND=github`. The UI shows "Experimental GitHub backend" everywhere it matters. Use a **throwaway account/repositories**:
-every blob pushed stays in Git history permanently, and the experiment endpoint requires an explicit confirmation flag.
-Repositories are created private as `mycloud-01`, `mycloud-02`, ... under the authenticated user, up to `MAX_REPOSITORIES`.
+Or from the command line:
 
-### OAuth setup
-1. GitHub > Settings > Developer settings > OAuth Apps > New OAuth App.
-2. Homepage `http://localhost:3001`; callback URL `http://127.0.0.1:3001/api/auth/github/callback`.
-3. Put the client id/secret and the callback URL in `.env`. The secret and the access token never leave the server process
-   (the token is held in memory; the browser only sees `connected: true`).
-4. **Permissions:** a classic OAuth App's narrowest scope covering private repos and repo creation is `repo` (broad: full control of your
-   repositories). `public_repo` suffices only for public repositories. A GitHub App with *Contents: read & write*
-   (+ *Administration: write* only if the app should create repositories) is narrower and preferable. Device flow helpers exist in `github/auth.ts` but are not exposed in the UI.
+```bash
+curl -X POST --data-binary @report.pdf \
+  "http://127.0.0.1:3001/api/files?path=documents/report.pdf"
+```
 
-## API overview
-| Method & path | Purpose |
+The body is the raw file bytes, not multipart form data.
+
+```
+documents/report.pdf.parw            # active
+documents/report.pdf.parw.pointer    # after archiving
+```
+
+## How it works
+
+```
+Browser -> React frontend -> API client -> HTTP server -> API routes
+                                                             |
+                                                       StorageService
+                                                      /              \
+                                              MetadataStore     RepositoryManager
+                                                (SQLite)               |
+                                                                 StorageProvider
+                                                                /               \
+                                                  LocalStorageProvider   GitHubStorageProvider
+                                                         |                       |
+                                                    Local disk            GitHub REST API
+```
+
+Local and GitHub providers share the same versioned-storage workflow, so storage logic stays independent of the backend.
+
+**Upload:** validate path, hash, encode to `.parw`, allocate a repository, commit, record metadata.
+**Download:** fetch container, verify container checksum, decode, verify original checksum.
+**Archive:** swap the active `.parw` for a pointer. The original stays reachable in Git history.
+**Restore:** follow the pointer to the historical commit, verify both checksums, write the file back.
+
+> Archiving shrinks the current tree, **not** the repository's total storage. Old objects remain in Git history.
+
+## Status
+
+| Working and tested | Not yet |
 |---|---|
-| `GET /api/auth/status`, `GET /api/settings` | backend, connection, limits (no secrets) |
-| `GET /api/files[?status=]`, `GET /api/tree` | files / virtual folder tree |
-| `POST /api/files?path=a/b.jpg` | **raw-body** upload (body = file bytes, no multipart) |
-| `POST /api/files/preview?path=` | dry run: PARW size, ratio, target repository; writes nothing |
-| `GET /api/files/download?path=` | decoded, checksum-verified original (active files) |
-| `POST /api/files/archive` `{path}` | replace with pointer (one commit) |
-| `POST /api/files/restore` `{path, restoreToTree?, slowMs?}` | streams NDJSON step events (`start`, `step`, `done`/`error`) |
-| `GET /api/experiment/dashboard`, `GET /api/repositories` | current tree vs historical vs estimate |
-| `POST /api/experiment/run` `{sizesMiB, kind, confirmGitHub?}` | history experiment (<= 4 files, <= 50 MiB each) |
-| `GET /api/auth/github/login|callback`, `POST /api/auth/device/*`, `POST /api/auth/logout` | GitHub connection |
+| PARW encode/decode, SHA-256 verification | Chunked uploads (primitives exist, not integrated) |
+| Archive and restore | Persistent GitHub token storage |
+| Local and multi-repo management | Production-scale reliability and security review |
+| GitHub OAuth, repo creation, upload, download, archive, restore (verified against the real API) | |
+| Metadata persistence across restarts | |
 
-## PARW format (v1)
-`"PARW"` | version u16 | metadata length u32 | metadata JSON | payload (all integers big-endian).
-Metadata: `filename, extension, mimeType, originalSize, compression ("zstd" | "none"), sha256 (of the ORIGINAL bytes), compressedSize`.
-zstd level 3; if zstd output is not smaller the payload is stored raw (so tiny/already-compressed files can be slightly *larger* than the original, and the UI says so).
-Decoding verifies magic, version, lengths, decompressed size (bounded to defeat decompression bombs) and SHA-256; any mismatch throws a typed error.
+Full verification steps: [docs/verification.md](docs/verification.md)
 
-## Archive / restore design
-* **Path convention:** `<virtual path>.parw` (active) and `<virtual path>.parw.pointer` (archived). The original extension is kept in the name.
-* **Archive:** read HEAD commit and the PARW file, build a pointer `{format, version, originalPath, commitSha, sha256, size}`, then in **one commit** delete the PARW file and add the pointer. The old blob remains reachable through `commitSha`. Nothing is freed.
-* **Restore (8 steps, aborting at the first failure):** read pointer, locate commit, fetch historical object, verify PARW SHA-256, decode, verify original SHA-256 (also against the database record), write local file, optionally commit the PARW back into the tree (Git de-duplicates the identical blob).
-* Pointers are validated strictly (no path traversal; `originalPath` must be a normalised `.parw` path).
+## GitHub mode
 
-## Multi-repository design
-`RepositoryManager` fill-first allocates uploads across repositories and creates the next one only when needed and under `MAX_REPOSITORIES`.
-**Capacity is judged by historical size**, because history never shrinks: after archiving, the current tree is tiny but the repository is as full as before
-(covered by a test). The Files page presents one tree; repository and checksums appear only in a file's details and on the Repositories page.
+Set these in `.env`:
 
-## Known GitHub limitations (verify against current GitHub docs; these change)
-* Hard per-file limit around 100 MB (warnings earlier); this project targets 90 MB and refuses larger files until chunking is integrated.
-* GitHub recommends keeping repositories small (on the order of 1 GB, strongly discouraged beyond ~5 GB) and may contact owners of oversized ones.
-* REST API rate limits apply; each upload is several API calls (blob, tree, commit, ref). Large blobs are sent base64-encoded (about 4/3 size).
-* The REST API exposes only a rounded, possibly lagging repository `size` (KB). It does **not** expose history/object sizes, so the app reports those as *inferred* or `n/a`, never as measured.
-* Terms of Service and acceptable-use policies for using a code host as bulk storage are **not evaluated** here; check them yourself.
-* Removing data from Git history requires rewriting history and is outside this project.
+```env
+STORAGE_BACKEND=github
+GITHUB_CLIENT_ID=your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+GITHUB_CALLBACK_URL=http://127.0.0.1:3001/api/auth/github/callback
+DATABASE_PATH=./data/gitvault-github.sqlite
+```
 
-## Storage experiment methodology
-For each requested size (<= 50 MiB, default 1 and 5 MiB; random or compressible payload) the runner: generates the file, encodes PARW, uploads, snapshots usage,
-archives (pointer replaces file), snapshots, restores from history and verifies SHA-256, restores into the tree, snapshots again.
-Reported: **A** current tree bytes, **B** estimated repository size, **C** retained historical bytes, **D** commits, **E** binary objects ("n/a" when the backend cannot say),
-plus timings and an automatically derived finding (did the repository footprint drop after archiving?).
-**Interpretation:** a local-mode run only validates logic and checksums. The question that matters, how GitHub's server-side size
-behaves after archiving, is answered only by running against a real throwaway repository (planned next step):
-`GITHUB_TOKEN=... npm run experiment -- --provider github --repo you/throwaway --sizes 1,5`.
+Create an OAuth App under **GitHub Settings -> Developer settings -> OAuth Apps** with homepage `http://localhost:3001` and the callback URL above, then restart the backend and connect your account.
+
+- Use `127.0.0.1` or `localhost` consistently. Mixing them breaks OAuth state and cookies.
+- The classic OAuth `repo` scope is broad. A scoped GitHub App would be safer.
+- Repositories are created as private: `mycloud-01`, `mycloud-02`, and so on, up to `MAX_REPOSITORIES`.
+- The OAuth token lives in server memory, so you reconnect after a restart. Metadata persists in SQLite.
+- Use a dedicated test account. Committed files can remain in Git history after archiving.
+- Check [GitHub's Terms of Service and acceptable use policies](https://docs.github.com/en/site-policy) before using repositories as general file storage.
+
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `STORAGE_BACKEND` | `local` | `local` or `github` |
+| `DATABASE_PATH` | `./data/gitvault.sqlite` | SQLite location |
+| `TARGET_REPOSITORY_SIZE` | 1 GiB | Target size for repository allocation |
+| `MAX_REPOSITORIES` | 3 | Maximum repositories to create |
+| `MAX_GITHUB_FILE_SIZE` | 90 MiB | Max encoded file size for GitHub |
+| `PORT` | 3001 | Backend port |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed origin for state-changing requests |
+
+GitHub OAuth variables are listed in [GitHub mode](#github-mode).
+
+## Development
+
+```bash
+npm run dev           # backend
+npm run client:dev    # frontend with hot reload (http://localhost:5173)
+npm test              # unit and integration tests
+npm run e2e           # browser tests (needs Playwright + Chromium)
+npm run client:build  # build the frontend
+npm run experiment    # storage experiment
+npm run parw:encode -- file
+npm run parw:decode -- file.parw
+```
 
 ## Known limitations
-No chunked upload integration; single-user, in-memory GitHub token; no user auth beyond a localhost origin check; uploads are buffered in memory (100 MB cap);
-previews send each file twice; experiment/test files in a GitHub repo stay in its history; Express host and Vite config untested; GitHub backend untested against the real API.
+
+- Uploads are buffered in memory and capped by configured size limits.
+- Simultaneous GitHub operations can hit non-fast-forward conflicts.
+- GitHub does not expose exact historical storage, so usage figures are estimates.
+- GitHub API rate limits apply, and each upload takes several requests.
+- Previews and uploads are separate operations, so a file may be processed twice.
+
+## Roadmap
+
+- [ ] Integrate chunked uploads for large files
+- [ ] Persist GitHub tokens securely
+- [ ] Support a scoped GitHub App instead of a classic OAuth App
+- [ ] Handle concurrent commits safely
+
+## Documentation
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Storage workflows](docs/STORAGE_FILES.md)
+- [PARW container format](docs/PARW_FORMAT.md)
+- [API reference](docs/API.md)
+- [Storage experiment](docs/STORAGE_EXPERIMENT.md)
+- [GitHub verification](docs/VERIFICATION.md)
+- [Local development](docs/LOCAL_DEVELOPMENT.md)
+
+## Design principles
+
+- **Backend independence:** workflows don't depend on a specific provider.
+- **Integrity first:** every restored file must pass checksum verification.
+- **Explicit limitations:** estimates are never presented as exact measurements.
+- **History awareness:** current tree size and historical storage are different things.
+- **Controlled allocation:** repository creation respects capacity and count limits.
+
+## Contributing
+
+Issues and pull requests are welcome. Please open an issue first for larger changes.
+
+## License
+
+See [LICENSE](LICENSE). <!-- Name it here, e.g. "MIT. See LICENSE." -->
